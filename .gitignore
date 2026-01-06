@@ -3,6 +3,7 @@
 .env.example
 
 # Python
+assets/
 __pycache__/
 *.py[cod]
 *$py.class
