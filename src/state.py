@@ -50,8 +50,8 @@ class StateManager:
             
             # Initialize components
             self.wake_detector = WakeWordDetector(wake_word="casper", sample_rate=16000)
-            self.gemini_client = GeminiLiveClient()  # Loads config from env
-            self.gemini_client.input_stream = self.input_stream  # Share stream
+            self.gemini_client = GeminiLiveClient()
+            self.gemini_client.input_stream = self.input_stream
             
             while self.running:
                 if self.state == State.IDLE:
