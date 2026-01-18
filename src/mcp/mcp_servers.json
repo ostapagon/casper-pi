@@ -1,0 +1,13 @@
+{
+  "mcp_servers": [
+    {
+      "name": "anki",
+      "enabled": true,
+      "transport": "stdio",
+      "command": ".venv/bin/python3",
+      "args": ["src/mcp/servers/anki/server.py"],
+      "comment": "Custom Anki MCP server with proper due date filtering. Uses AnkiConnect (port 8765). Only returns cards actually due today."
+    }
+  ]
+}
+

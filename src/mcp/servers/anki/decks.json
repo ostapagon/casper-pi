@@ -1,0 +1,15 @@
+{
+  "Chinese": {
+    "new": {
+      "perDay": 5
+    },
+    "rev": {
+      "perDay": 50
+    },
+    "reviewOrder": 3,
+    "newCardOrder": 0,
+    "newSortOrder": 0,
+    "mixNewAndReview": true
+  }
+}
+

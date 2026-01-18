@@ -1,0 +1,30 @@
+# Cursor Rules for Casper Pi
+
+## Project Structure
+
+- `src/` - Main application source code
+  - `src/mcp/` - MCP integration module
+    - `src/mcp/registry.py` - Core MCP registry
+    - `src/mcp/servers/` - Custom MCP server implementations
+    - `src/mcp/README.md` - MCP documentation
+- `cursor_tests/` - Test scripts and utilities (gitignored)
+- `src/mcp/mcp_servers.json` - MCP server configuration (one place to register all servers)
+
+## Testing
+
+- Test scripts are located in `cursor_tests/` directory
+- This directory is gitignored - test files should not be committed
+- Use test scripts for development and debugging only
+
+## MCP Server Integration
+
+- All MCP servers are registered in `mcp_servers.json` (single configuration point)
+- MCP registry automatically discovers tools from all enabled servers
+- Supports both stdio and HTTP transports
+
+## Code Style
+
+- Follow existing patterns in the codebase
+- Use type hints where appropriate
+- Keep functions focused and single-purpose
+

@@ -7,6 +7,8 @@ from enum import Enum, auto
 
 from .wake_word import WakeWordDetector
 from .voice_clients.gemini_live import GeminiLiveClient
+from .mcp import MCPRegistry
+from .display import DisplayManager, DisplayState
 
 
 class State(Enum):
@@ -28,6 +30,7 @@ class StateManager:
         # Components
         self.wake_detector = None
         self.gemini_client = None
+        self.display_manager = DisplayManager()
     
     def _setup_audio(self):
         """Setup microphone stream"""
@@ -48,10 +51,31 @@ class StateManager:
         try:
             self._setup_audio()
             
+            # Initialize MCP registry
+            mcp_registry = MCPRegistry()
+            try:
+                await asyncio.wait_for(mcp_registry.initialize(), timeout=10.0)
+            except:
+                mcp_registry = None
+            
             # Initialize components
             self.wake_detector = WakeWordDetector(wake_word="casper", sample_rate=16000)
-            self.gemini_client = GeminiLiveClient()
+            self.gemini_client = GeminiLiveClient(mcp_registry=mcp_registry, display_manager=self.display_manager)
             self.gemini_client.input_stream = self.input_stream
+            
+            # Set display to sleep initially (IDLE state)
+            try:
+                if not self.display_manager.is_initialized:
+                    self.display_manager.initialize()
+                    # Small delay to ensure display is ready
+                    import time
+                    time.sleep(0.5)
+                self.display_manager.set_state(DisplayState.SLEEP)
+                print("✓ Display set to sleep state")
+            except Exception as e:
+                print(f"⚠️ Display state warning: {e}")
+                import traceback
+                traceback.print_exc()
             
             while self.running:
                 if self.state == State.IDLE:
@@ -70,6 +94,13 @@ class StateManager:
                     
                     # Transition to ACTIVE
                     self.state = State.ACTIVE
+                    # Set display to active
+                    try:
+                        if not self.display_manager.is_initialized:
+                            self.display_manager.initialize()
+                        self.display_manager.set_state(DisplayState.ACTIVE)
+                    except Exception as e:
+                        print(f"⚠️ Display state warning: {e}")
                     print("\n🎙️ Starting conversation...")
                 
                 elif self.state == State.ACTIVE:
@@ -78,6 +109,12 @@ class StateManager:
                     
                     # Back to IDLE
                     self.state = State.IDLE
+                    # Set display to sleep
+                    try:
+                        if self.display_manager.is_initialized:
+                            self.display_manager.set_state(DisplayState.SLEEP)
+                    except Exception as e:
+                        print(f"⚠️ Display state warning: {e}")
                     print("💤 Back to idle\n")
                     self.wake_detector.reset()
         
@@ -92,5 +129,7 @@ class StateManager:
             self.input_stream.close()
         if self.gemini_client and self.gemini_client.output_stream:
             self.gemini_client.output_stream.close()
+        if self.display_manager:
+            self.display_manager.cleanup()
         self.pya.terminate()
 
