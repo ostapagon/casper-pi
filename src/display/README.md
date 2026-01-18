@@ -57,10 +57,25 @@ RST_PIN = board.D20  # Change D20 to D21, D22, D23, etc.
 
 Available GPIO pins you can use: 18, 19, 20, 21, 22, 23, 24, 25, 26, 27
 
+## Font Requirements
+
+The display supports both English and Chinese characters. **You must install Chinese fonts** for proper rendering:
+
+```bash
+sudo apt-get install -y fonts-wqy-microhei fonts-noto-cjk
+```
+
+**Font Priority:**
+1. WenQuanYi Micro Hei (`fonts-wqy-microhei`) - Best for small displays
+2. Noto Sans CJK (`fonts-noto-cjk`) - Comprehensive CJK support
+3. Droid Sans Fallback (usually pre-installed)
+
+The display system automatically selects the best available font and falls back to Latin fonts if Chinese fonts aren't found.
+
 ## Module Structure
 
 - `manager.py` - Main display manager with state handling
 - `states.py` - Display state definitions
 - `tools.py` - Display tool registry for Gemini integration
-- `visualizations.py` - Visualization functions for different states
+- `visualizations.py` - Visualization functions with automatic text wrapping and font selection
 

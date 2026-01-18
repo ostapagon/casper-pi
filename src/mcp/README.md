@@ -52,14 +52,20 @@ All MCP servers are configured in `mcp_servers.json` (in this directory):
 
 ## Custom MCP Servers
 
-### Anki MCP Server
+### Custom Anki MCP Server
 
-We have a **custom Anki MCP server** implementation located in `servers/anki/`:
+**This project uses a custom Anki MCP server** (not the AnkiMCP addon). The custom server is located in `servers/anki/`:
 
 - **Location**: `src/mcp/servers/anki/server.py`
 - **Transport**: stdio
-- **Dependencies**: Requires AnkiConnect addon running on port 8765
+- **Dependencies**: Requires Anki desktop app with AnkiConnect addon running on port 8765
 - **Configuration**: Deck settings in `servers/anki/decks.json`
+
+**Why Custom Server?**
+- Better due date filtering logic
+- Proper handling of "Again" cards
+- Deck-specific configuration support
+- More accurate card selection based on Anki's internal state
 
 **Features:**
 - `list_decks` - List all Anki decks
@@ -82,33 +88,35 @@ Deck-specific settings are configured in `servers/anki/decks.json`:
 - If not enough cards due today, fills from tomorrow (`prop:due>=1`) to reach review limit
 - New cards are limited separately by `new.perDay` setting
 
-## Legacy: AnkiMCP Addon
-
-The AnkiMCP addon (code 124672614) runs an MCP server inside Anki:
-- Server runs on `http://127.0.0.1:3141` when Anki is open
-- Configured in `mcp_servers.json` (in this directory) with HTTP transport
-- Automatically discovered and integrated on startup
-
 ### Setup Instructions
 
-1. **Install Anki** (any method - desktop app, snap, etc.)
-2. **Install AnkiMCP Addon**:
+1. **Install Anki Desktop Application**:
+   ```bash
+   # On Raspberry Pi/Debian
+   # Anki is typically installed via pip or downloaded from ankiweb.net
+   ```
+
+2. **Install AnkiConnect Addon** (required for custom MCP server):
    - Open Anki
    - Tools → Add-ons → Get Add-ons...
-   - Enter code: **124672614**
+   - Enter code: **2055492159**
    - Restart Anki
-3. **Verify addon is running**:
-   - Tools → Add-ons → AnkiMCP Server → Config (if available)
-   - Check server is running on `http://127.0.0.1:3141`
-   - Note: Some versions may not have a Config UI - the addon runs with defaults
-4. **Configure Anki deck settings** (if needed):
-   - AnkiMCP addon config (Tools → Add-ons → AnkiMCP Server → Config) only has server settings (port, host)
-   - Deck-specific settings (card limits, intervals, etc.) are configured in Anki's Deck Options:
-     - Select a deck → Click "Options" → Configure new cards/day, review intervals, etc.
-     - Or use Tools → Deck Options to manage option presets
+
+3. **Start Anki**:
+   - AnkiConnect runs automatically when Anki starts
+   - Server runs on `http://127.0.0.1:8765`
+   - Use `./restart_anki.sh` script to restart Anki if needed
+
+4. **Configure Deck Settings** (optional):
+   - Edit `src/mcp/servers/anki/decks.json` for deck-specific settings
+   - Or configure in Anki's Deck Options UI
+   - Settings include: new cards/day, review cards/day, review order, etc.
+
 5. **Sync your cards** (if needed):
-   - File → Sync
+   - File → Sync in Anki
    - Enter AnkiWeb credentials
+
+**Note**: This project uses a custom MCP server, not the AnkiMCP addon. The custom server provides better filtering and configuration options.
 
 ### Testing Connection
 

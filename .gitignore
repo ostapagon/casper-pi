@@ -1,6 +1,6 @@
 # Environment variables
 .env
-.env.example
+calendar_key.json
 
 # Python
 assets/

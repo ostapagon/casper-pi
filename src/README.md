@@ -50,6 +50,28 @@ GEMINI_API_KEY=your_api_key_here
 GEMINI_MODEL=your_audio_model_here
 ```
 
+## Font Requirements
+
+For display support of Chinese characters, install fonts:
+
+```bash
+sudo apt-get install -y fonts-wqy-microhei fonts-noto-cjk
+```
+
+The display system automatically uses these fonts to render both English and Chinese text correctly.
+
+## Anki Integration
+
+This project uses a **custom Anki MCP server** (`src/mcp/servers/anki/server.py`) that connects to AnkiConnect. 
+
+**Setup:**
+1. Install Anki desktop application
+2. Install AnkiConnect addon (code: 2055492159)
+3. Start Anki (AnkiConnect runs on port 8765)
+4. Configure deck settings in `src/mcp/servers/anki/decks.json` (optional)
+
+See `src/mcp/README.md` for detailed information.
+
 ## Conversation History
 
 Saved to `memories/chat_YYYYMMDD_HHMMSS.json`

@@ -7,4 +7,6 @@ spidev>=3.5
 Pillow>=9.0.0
 mcp>=0.1.0
 httpx>=0.24.0
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
 
