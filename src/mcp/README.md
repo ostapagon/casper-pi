@@ -124,6 +124,78 @@ Deck-specific settings are configured in `servers/anki/decks.json`:
 python3 cursor_tests/test_mcp_connection.py
 ```
 
+### Perplexity MCP Server
+
+**This project uses the official Perplexity MCP server** for AI-powered web search, research, and reasoning capabilities.
+
+- **Package**: `@perplexity-ai/mcp-server` (official npm package)
+- **Transport**: stdio
+- **Dependencies**: Node.js/npx (already installed)
+- **Configuration**: Requires `PERPLEXITY_API_KEY` environment variable
+
+**Why Perplexity?**
+- Real-time web search with AI-powered summarization
+- Deep research capabilities with comprehensive analysis
+- Advanced reasoning for complex queries
+- Multiple specialized tools for different use cases
+
+**Available Tools:**
+- `perplexity_search` - Direct web search returning ranked results with metadata
+- `perplexity_ask` - Quick conversational AI with real-time web search (uses `sonar-pro` model)
+- `perplexity_research` - Deep comprehensive research (uses `sonar-deep-research` model)
+- `perplexity_reason` - Advanced reasoning and problem-solving (uses `sonar-reasoning-pro` model)
+
+**When to Use Each Tool:**
+- **perplexity_search**: When you need current information, news, or factual data from the web
+- **perplexity_ask**: For quick questions and everyday searches
+- **perplexity_research**: For thorough analysis, detailed reports, or comprehensive investigations
+- **perplexity_reason**: For complex analytical tasks, problem-solving, or logical reasoning
+
+### Setup Instructions
+
+1. **Get Perplexity API Key**:
+   - Visit [Perplexity API Portal](https://www.perplexity.ai/account/api/group)
+   - Create an account or sign in
+   - Generate an API key
+   - **Note**: Perplexity is a paid service (pricing varies by model usage)
+
+2. **Add API Key to Environment**:
+   - Edit `.env` file in project root
+   - Add line: `PERPLEXITY_API_KEY=your_api_key_here`
+
+3. **Verify Node.js/npx**:
+   ```bash
+   node --version  # Should be v20.x or higher
+   npx --version   # Should be available
+   ```
+
+4. **Restart Application**:
+   - The Perplexity tools will be automatically discovered and registered
+   - Check logs for: `Registered tool: perplexity_* from server perplexity`
+
+**Optional Configuration:**
+
+Environment variables for advanced configuration:
+- `PERPLEXITY_TIMEOUT_MS` - Request timeout in milliseconds (default: 300000 = 5 minutes)
+- `PERPLEXITY_LOG_LEVEL` - Logging level: DEBUG, INFO, WARN, ERROR (default: ERROR)
+- `PERPLEXITY_PROXY` - Proxy URL for corporate networks (e.g., `https://proxy:8080`)
+
+**Pricing Information:**
+
+Perplexity API is a paid service. Check current pricing at [Perplexity Pricing](https://docs.perplexity.ai/pricing).
+- Charges are per API request based on the model used
+- `sonar-pro` (used by perplexity_ask): Standard pricing
+- `sonar-deep-research`: Higher cost for comprehensive research
+- `sonar-reasoning-pro`: Higher cost for advanced reasoning
+
+**Troubleshooting:**
+
+- **No tools discovered**: Verify `PERPLEXITY_API_KEY` is set in `.env` file
+- **Connection errors**: Check API key validity at Perplexity dashboard
+- **Timeout errors**: Increase `PERPLEXITY_TIMEOUT_MS` for long research queries
+- **EOF/Initialize errors**: Ensure npx is using `-y` flag (auto-installed in config)
+- **Proxy issues**: Set `PERPLEXITY_PROXY` if behind corporate firewall
+
 ## Adding New MCP Servers
 
 1. Add entry to `mcp_servers.json` (in this directory) with appropriate transport

@@ -29,12 +29,133 @@ def _load_font(size=16):
             return ImageFont.load_default()
 
 def render_sleep_state(tick: int = 0) -> Image.Image:
-    """Render sleep state - simple text"""
-    return render_text("sleep", size=24)
+    """Render sleep state - ghost with animated zzz"""
+    img = Image.new('RGB', (128, 96), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    # Ghost dimensions (scaled for 128x96 display)
+    g_w = 45  # Ghost width
+    g_h = 55  # Ghost height
+    c_x = 64  # Center X
+    c_y = 50  # Center Y
+    
+    left = c_x - g_w // 2
+    top = c_y - g_h // 2
+    right = c_x + g_w // 2
+    bottom = c_y + g_h // 2
+    
+    # Draw Arms (side nubs)
+    draw.pieslice([left - 10, c_y - 10, left + 10, c_y + 20], 90, 270, fill=(255, 255, 255))
+    draw.pieslice([right - 10, c_y - 10, right + 10, c_y + 20], 270, 90, fill=(255, 255, 255))
+    
+    # Head (top circle)
+    draw.ellipse([left, top, right, top + g_w], fill=(255, 255, 255))
+    
+    # Body (rectangle)
+    draw.rectangle([left, top + g_w // 2, right, bottom], fill=(255, 255, 255))
+    
+    # Wavy tail (circles at bottom)
+    wave_count = 4
+    wave_width = g_w / wave_count
+    for i in range(wave_count):
+        wx = left + (i * wave_width)
+        wy = bottom - (wave_width / 2)
+        draw.ellipse([wx, wy, wx + wave_width, wy + wave_width], fill=(255, 255, 255))
+    
+    # Closed eyes (arcs)
+    eye_offset = 10
+    eye_y = c_y - 5
+    eye_radius = 6  # Keep original size for closed eyes
+    
+    draw.arc([c_x - eye_offset - eye_radius, eye_y - eye_radius, 
+              c_x - eye_offset + eye_radius, eye_y + eye_radius], 
+             start=0, end=180, fill=(0, 0, 0), width=2)
+    draw.arc([c_x + eye_offset - eye_radius, eye_y - eye_radius, 
+              c_x + eye_offset + eye_radius, eye_y + eye_radius], 
+             start=0, end=180, fill=(0, 0, 0), width=2)
+    
+    # Mouth (small O)
+    draw.ellipse([c_x - 3, c_y + 8, c_x + 3, c_y + 14], fill=(0, 0, 0))
+    
+    # Draw Z function
+    def draw_z(x, y, s):
+        draw.line([x, y, x+s, y], fill=(255, 255, 255), width=2)
+        draw.line([x+s, y, x, y+s], fill=(255, 255, 255), width=2)
+        draw.line([x, y+s, x+s, y+s], fill=(255, 255, 255), width=2)
+    
+    # Animated Zzz with floating effect
+    y_offset = int(3 * (tick % 20) / 20)
+    draw_z(c_x + 20, c_y - 20 - y_offset, 5)
+    draw_z(c_x + 28, c_y - 30 - y_offset, 7)
+    draw_z(c_x + 38, c_y - 42 - y_offset, 9)
+    
+    return img
 
 def render_awake_state(tick: int = 0) -> Image.Image:
-    """Render awake state - simple text"""
-    return render_text("active", size=24)
+    """Render idle/awake state - ghost with open eyes"""
+    img = Image.new('RGB', (128, 96), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    # Ghost dimensions (same as sleep state)
+    g_w = 45  # Ghost width
+    g_h = 55  # Ghost height
+    c_x = 64  # Center X
+    c_y = 50  # Center Y
+    
+    left = c_x - g_w // 2
+    top = c_y - g_h // 2
+    right = c_x + g_w // 2
+    bottom = c_y + g_h // 2
+    
+    # Draw Arms (side nubs)
+    draw.pieslice([left - 10, c_y - 10, left + 10, c_y + 20], 90, 270, fill=(255, 255, 255))
+    draw.pieslice([right - 10, c_y - 10, right + 10, c_y + 20], 270, 90, fill=(255, 255, 255))
+    
+    # Head (top circle)
+    draw.ellipse([left, top, right, top + g_w], fill=(255, 255, 255))
+    
+    # Body (rectangle)
+    draw.rectangle([left, top + g_w // 2, right, bottom], fill=(255, 255, 255))
+    
+    # Wavy tail (circles at bottom) - slightly animated
+    wave_count = 4
+    wave_width = g_w / wave_count
+    wave_offset = int(1 * (tick % 20) / 20)
+    for i in range(wave_count):
+        wx = left + (i * wave_width)
+        wy = bottom - (wave_width / 2)
+        y_adjust = wave_offset if i % 2 == 0 else -wave_offset
+        draw.ellipse([wx, wy + y_adjust, wx + wave_width, wy + wave_width + y_adjust], fill=(255, 255, 255))
+    
+    # Eyes (black ovals) - 25% smaller
+    eye_w = 4  # 25% smaller (was 6)
+    eye_h = 7  # 25% smaller (was 9)
+    eye_offset = 10
+    eye_y = c_y - 10
+    
+    # Left eye
+    draw.ellipse([c_x - eye_offset - eye_w, eye_y - eye_h,
+                  c_x - eye_offset + eye_w, eye_y + eye_h], fill=(0, 0, 0))
+    # Right eye
+    draw.ellipse([c_x + eye_offset - eye_w, eye_y - eye_h,
+                  c_x + eye_offset + eye_w, eye_y + eye_h], fill=(0, 0, 0))
+    
+    # Eye highlights
+    draw.ellipse([c_x - eye_offset - 1, eye_y - 4, c_x - eye_offset + 2, eye_y - 1], fill=(255, 255, 255))
+    draw.ellipse([c_x + eye_offset - 1, eye_y - 4, c_x + eye_offset + 2, eye_y - 1], fill=(255, 255, 255))
+    
+    # Mouth (smile - chord)
+    mouth_w = 10
+    mouth_h = 8
+    mouth_y = c_y + 5
+    draw.chord([c_x - mouth_w, mouth_y, c_x + mouth_w, mouth_y + mouth_h], 
+               start=0, end=180, fill=(0, 0, 0))
+    
+    # Cheeks (grey)
+    draw.ellipse([c_x - 22, c_y, c_x - 15, c_y + 4], fill=(200, 200, 200))
+    draw.ellipse([c_x + 15, c_y, c_x + 22, c_y + 4], fill=(200, 200, 200))
+    
+    return img
 
 def render_text(text: str, size: int = 20) -> Image.Image:
     """Render text centered on display with automatic wrapping and font sizing"""

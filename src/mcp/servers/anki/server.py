@@ -144,13 +144,28 @@ async def get_due_cards(deck_name=None, limit=None):
     # Combine due0 and due1 cards
     card_ids_review = card_ids_due0_filtered + card_ids_due1
     
-    # Get NEW cards (limit to 5 per day)
-    query_new = "is:new"
-    if deck_name:
-        query_new = f'deck:"{deck_name}" {query_new}'
+    # Get NEW cards - use Anki's getDeckStats to respect internal limits
+    # Anki tracks daily new card limits internally
+    deck_stats = await anki_request("getDeckStats", decks=[deck_name]) if deck_name else {}
+    anki_new_count = 0
+    if deck_stats and deck_name:
+        # getDeckStats returns dict with deck_id as key
+        for deck_id, stats in deck_stats.items():
+            if stats.get("name") == deck_name:
+                anki_new_count = stats.get("new_count", 0)
+                break
     
-    card_ids_new_all = await anki_request("findCards", query=query_new)
-    card_ids_new = card_ids_new_all[:new_per_day] if card_ids_new_all else []
+    # Get NEW cards (limit to what Anki says is available)
+    card_ids_new = []
+    if anki_new_count > 0:
+        query_new = "is:new"
+        if deck_name:
+            query_new = f'deck:"{deck_name}" {query_new}'
+        
+        card_ids_new_all = await anki_request("findCards", query=query_new)
+        # Limit to minimum of: Anki's count, our config, and available cards
+        limit = min(anki_new_count, new_per_day, len(card_ids_new_all) if card_ids_new_all else 0)
+        card_ids_new = card_ids_new_all[:limit] if card_ids_new_all else []
     
     # Combine all card IDs and remove duplicates
     card_ids = list(dict.fromkeys(card_ids_review + card_ids_new))  # Preserves order, removes duplicates
@@ -162,8 +177,9 @@ async def get_due_cards(deck_name=None, limit=None):
             "total_all": due0_count,
             "reviewed_today": reviewed_count,
             "again_today": again_count,
+            "anki_new_count": anki_new_count,
             "returned": 0, 
-            "message": f"No cards due today (already reviewed {reviewed_count} cards, {again_count} rated Again)"
+            "message": f"No cards due today (already reviewed {reviewed_count} cards, {again_count} rated Again, Anki new count: {anki_new_count})"
         }
     
     # Get ALL cards info
@@ -286,7 +302,7 @@ async def get_due_cards(deck_name=None, limit=None):
     completed_today = reviewed_count - again_count
     
     msg_parts = []
-    msg_parts.append(f"Found {total_found} cards to review (limit: {rev_per_day} review/day, {new_per_day} new/day, {reviewed_count} already studied, {again_count} rated Again)")
+    msg_parts.append(f"Found {total_found} cards to review (limit: {rev_per_day} review/day, Anki new available: {anki_new_count}, {reviewed_count} already studied, {again_count} rated Again)")
     if review_count_before > 0 or learning_count_before > 0 or new_count_before > 0:
         type_breakdown = []
         if review_count_before > 0:

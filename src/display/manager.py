@@ -41,6 +41,9 @@ class DisplayManager:
         self._display: Optional[SSD1351] = None
         self._initialized = False
         self._flip_display = get_flip_display()
+        self._animation_thread: Optional[threading.Thread] = None
+        self._animation_running = False
+        self._tick = 0
     
     def initialize(self):
         """Initialize the display hardware"""
@@ -77,7 +80,11 @@ class DisplayManager:
                 raise
     
     def cleanup(self):
-        """Cleanup display resources"""
+        """Cleanup display resources - fast with proper thread join"""
+        # Stop animation and wait for thread to exit
+        self._stop_animation()
+        
+        # Now safe to cleanup display
         with self._lock:
             if self._display:
                 try:
@@ -97,7 +104,6 @@ class DisplayManager:
                     except:
                         pass
                 lgpio.gpiochip_close(chip)
-                time.sleep(0.1)
             except:
                 pass
     
@@ -106,21 +112,29 @@ class DisplayManager:
         if not self._initialized:
             self.initialize()
         
-        with self._lock:
-            old_state = self._state
-            self._state = state
-            
-            # Render sleep and awake states (simple text, no animation needed)
-            if state == DisplayState.SLEEP or state == DisplayState.ACTIVE:
-                if state == DisplayState.SLEEP:
-                    img = render_sleep_state()
-                elif state == DisplayState.ACTIVE:
-                    img = render_awake_state()
+        old_state = self._state
+        self._state = state
+        
+        # Stop previous animation if running
+        if old_state != state:
+            self._stop_animation()
+        
+        # Start animation for sleep and idle states ONLY
+        # Don't animate ACTIVE state to reduce CPU and avoid conflicts
+        if state == DisplayState.SLEEP:
+            self._start_animation()
+        elif state == DisplayState.IDLE:
+            self._start_animation()
+        elif state == DisplayState.ACTIVE:
+            # Render active state once (no animation) - safer for cleanup
+            with self._lock:
+                img = render_awake_state()
                 if self._flip_display:
                     img = img.transpose(Image.ROTATE_180)
                 self._show_image(img)
-            else:
-                # Static visualization for other states
+        else:
+            # Static visualization for other states
+            with self._lock:
                 img = render_text(state.name.lower(), size=16)
                 if self._flip_display:
                     img = img.transpose(Image.ROTATE_180)
@@ -130,6 +144,9 @@ class DisplayManager:
         """Show text on display"""
         if not self._initialized:
             self.initialize()
+        
+        # Stop animation to prevent conflicts
+        self._stop_animation()
         
         with self._lock:
             img = render_text(text, size)
@@ -142,16 +159,19 @@ class DisplayManager:
         if not self._initialized:
             self.initialize()
         
+        # Stop animation to prevent conflicts
+        self._stop_animation()
+        
         with self._lock:
             if self._flip_display:
                 image = image.transpose(Image.ROTATE_180)
             self._show_image(image)
     
     def _show_image(self, image):
-        """Internal method to display PIL Image"""
-        if not self._display:
-            print("⚠️ Display not initialized, cannot show image")
-            return
+        """Internal method to display PIL Image - with safety checks"""
+        # Safety check - don't try to show if display is None
+        if not self._display or not self._initialized:
+            return  # Silent fail if display not initialized
         
         try:
             # Ensure image is RGB mode
@@ -168,13 +188,12 @@ class DisplayManager:
             group = displayio.Group()
             group.append(tile_grid)
             
-            # Force display refresh
+            # Force display refresh (no sleep needed)
             self._display.root_group = None
-            time.sleep(0.01)  # Small delay
             self._display.root_group = group
-        except Exception as e:
-            print(f"⚠️ Display error: {e}")
-            traceback.print_exc()
+        except Exception:
+            # Silent fail to avoid spam
+            pass
     
     @property
     def state(self) -> Optional[DisplayState]:
@@ -185,3 +204,63 @@ class DisplayManager:
     def is_initialized(self) -> bool:
         """Check if display is initialized"""
         return self._initialized
+    
+    def _start_animation(self):
+        """Start animation thread for current state"""
+        if self._animation_running:
+            return
+        
+        self._animation_running = True
+        self._tick = 0
+        self._animation_thread = threading.Thread(target=self._animation_loop, daemon=True)
+        self._animation_thread.start()
+    
+    def _stop_animation(self):
+        """Stop animation thread - fast but ensure it stops"""
+        if not self._animation_running:
+            return
+        
+        self._animation_running = False
+        
+        # Give thread a moment to exit (non-blocking check)
+        if self._animation_thread and self._animation_thread.is_alive():
+            # Try to join with very short timeout - just enough for one loop iteration
+            self._animation_thread.join(timeout=0.1)  # 100ms max - one animation cycle
+        
+        self._animation_thread = None
+    
+    def _animation_loop(self):
+        """Animation loop that runs in separate thread"""
+        try:
+            while self._animation_running:
+                state = self._state
+                if state == DisplayState.SLEEP:
+                    img = render_sleep_state(self._tick)
+                elif state == DisplayState.IDLE:
+                    img = render_awake_state(self._tick)
+                else:
+                    # State changed, exit loop
+                    break
+                
+                # Check if we should stop BEFORE trying to display
+                if not self._animation_running:
+                    return
+                
+                with self._lock:
+                    # Double-check display still exists
+                    if not self._display or not self._animation_running:
+                        return
+                    
+                    if self._flip_display:
+                        img = img.transpose(Image.ROTATE_180)
+                    self._show_image(img)
+                
+                self._tick += 1
+                
+                # Sleep in small chunks so we can exit quickly
+                for _ in range(4):
+                    if not self._animation_running:
+                        return
+                    time.sleep(0.05)  # 4 x 0.05 = 0.2s total, but responsive
+        except Exception:
+            pass  # Silent fail on cleanup

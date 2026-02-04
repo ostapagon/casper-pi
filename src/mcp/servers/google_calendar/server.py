@@ -13,7 +13,7 @@ from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# Load environment variables from .env
+# Load environment variables once at startup
 load_dotenv()
 
 # Service account key file path - from env or default location
@@ -21,8 +21,11 @@ SERVICE_ACCOUNT_FILE = os.getenv(
     'GOOGLE_CALENDAR_SERVICE_ACCOUNT_PATH',
     str(Path(__file__).parent.parent.parent.parent.parent / "calendar_key.json")
 )
-# User's calendar email - used to access shared calendar (set via GOOGLE_CALENDAR_USER_EMAIL env var)
-USER_CALENDAR_EMAIL = os.getenv('GOOGLE_CALENDAR_USER_EMAIL', None)
+
+def get_user_calendar_email():
+    """Get user calendar email dynamically"""
+    return os.getenv('GOOGLE_CALENDAR_USER_EMAIL', None)
+
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
 # Global service instance
@@ -88,8 +91,9 @@ async def list_events(calendar_id='primary', max_results=10, time_min=None, time
     
     # If calendar_id is 'primary', try user's calendar first, then fall back to service account's primary
     actual_calendar_id = calendar_id
-    if calendar_id == 'primary' and USER_CALENDAR_EMAIL:
-        actual_calendar_id = USER_CALENDAR_EMAIL
+    user_email = get_user_calendar_email()
+    if calendar_id == 'primary' and user_email:
+        actual_calendar_id = user_email
     
     # Build query parameters
     query_params = {
@@ -220,8 +224,8 @@ def main():
                                 }
                             },
                             {
-                                "name": "list_events",
-                                "description": "List events from a calendar. Supports date filtering with time_min and time_max for efficient queries.",
+                                "name": "list_calendar_events",
+                                "description": "List events from a Google Calendar. Supports date filtering with time_min and time_max for efficient queries.",
                                 "inputSchema": {
                                     "type": "object",
                                     "properties": {
@@ -313,7 +317,7 @@ def main():
                         }
                         print(json.dumps(error_response), flush=True)
                 
-                elif tool_name == "list_events":
+                elif tool_name == "list_calendar_events":
                     try:
                         calendar_id = args.get("calendar_id", "primary")
                         max_results = args.get("max_results", 10)

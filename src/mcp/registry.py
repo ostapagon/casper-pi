@@ -27,6 +27,7 @@ class MCPHTTPClient:
         self._client = None
         self._session_id = None
         self._session_id = None
+        self._connected = True  # HTTP starts connected
     
     async def initialize(self):
         """Initialize MCP HTTP connection"""
@@ -86,6 +87,9 @@ class MCPHTTPClient:
         """Call a tool on the MCP server"""
         if not self._initialized:
             await self.initialize()
+        
+        if not self._connected:
+            raise Exception("MCP HTTP server connection lost")
         
         request = {
             "jsonrpc": "2.0",
@@ -154,8 +158,13 @@ class MCPHTTPClient:
             else:
                 # Regular JSON response
                 return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error sending MCP request: {e}")
+            self._connected = False
+            return None
         except Exception as e:
             logger.error(f"Error sending MCP HTTP request: {e}")
+            self._connected = False
             return None
     
     async def _send_notification(self, notification: Dict[str, Any]):
@@ -204,6 +213,8 @@ class MCPClient:
         self._request_id = 0
         self._pending_requests = {}
         self._initialized = False
+        self._reader_task = None
+        self._connected = False
     
     async def initialize(self):
         """Initialize MCP connection"""
@@ -220,8 +231,9 @@ class MCPClient:
                 env=env
             )
             
-            # Start reader task
-            asyncio.create_task(self._read_responses())
+            # Start reader task and track it
+            self._reader_task = asyncio.create_task(self._read_responses())
+            self._connected = True
             
             # Send initialize request
             init_request = {
@@ -297,7 +309,8 @@ class MCPClient:
     
     async def _send_request(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Send JSON-RPC request and wait for response"""
-        if not self.process or not self.process.stdin:
+        if not self.process or not self.process.stdin or not self._connected:
+            logger.error("Error sending MCP request: Connection lost")
             return None
         
         request_id = request.get("id")
@@ -319,6 +332,7 @@ class MCPClient:
         except Exception as e:
             logger.error(f"Error sending MCP request: {e}")
             self._pending_requests.pop(request_id, None)
+            self._connected = False
             return None
     
     async def _send_notification(self, notification: Dict[str, Any]):
@@ -340,9 +354,11 @@ class MCPClient:
         
         buffer = ""
         try:
-            while True:
+            while self._connected:
                 chunk = await self.process.stdout.read(1024)
                 if not chunk:
+                    logger.warning("MCP server connection lost (stdout closed)")
+                    self._connected = False
                     break
                 
                 buffer += chunk.decode('utf-8', errors='ignore')
@@ -356,11 +372,22 @@ class MCPClient:
                             request_id = response.get("id")
                             if request_id in self._pending_requests:
                                 future = self._pending_requests.pop(request_id)
-                                future.set_result(response)
+                                if not future.done():
+                                    future.set_result(response)
                         except json.JSONDecodeError:
                             logger.warning(f"Failed to parse MCP response: {line}")
+        except asyncio.CancelledError:
+            logger.debug("MCP reader task cancelled")
+            raise
         except Exception as e:
             logger.error(f"Error reading MCP responses: {e}")
+            self._connected = False
+        finally:
+            # Cancel all pending requests
+            for request_id, future in list(self._pending_requests.items()):
+                if not future.done():
+                    future.cancel()
+            self._pending_requests.clear()
     
     def _get_request_id(self) -> int:
         """Get next request ID"""
@@ -369,14 +396,48 @@ class MCPClient:
     
     async def cleanup(self):
         """Cleanup MCP client"""
+        self._connected = False
+        
+        # Cancel reader task
+        if self._reader_task and not self._reader_task.done():
+            self._reader_task.cancel()
+            try:
+                await self._reader_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.warning(f"Error cancelling reader task: {e}")
+        
+        # Terminate process
         if self.process:
             try:
+                if self.process.stdin:
+                    try:
+                        self.process.stdin.close()
+                        await self.process.stdin.wait_closed()
+                    except Exception:
+                        pass
+                
                 self.process.terminate()
                 await asyncio.wait_for(self.process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                logger.warning("MCP process did not terminate, killing")
+                if self.process:
+                    self.process.kill()
+                    try:
+                        await self.process.wait()
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning(f"Error cleaning up MCP client: {e}")
                 if self.process:
-                    self.process.kill()
+                    try:
+                        self.process.kill()
+                    except Exception:
+                        pass
+        
+        self._reader_task = None
+        self.process = None
 
 
 class MCPRegistry:
@@ -646,6 +707,28 @@ class MCPRegistry:
         
         try:
             client = self.clients[server_name]
+            
+            # Check connection state (for stdio clients)
+            if isinstance(client, MCPClient) and not client._connected:
+                logger.warning(f"MCP server {server_name} disconnected, attempting reconnect...")
+                try:
+                    await client.cleanup()
+                    # Reinitialize
+                    server_config = self.servers[server_name]
+                    command = server_config.get("command")
+                    args_list = server_config.get("args", [])
+                    env = server_config.get("env", {})
+                    cmd_list = [command] + (args_list if isinstance(args_list, list) else [])
+                    new_client = MCPClient(cmd_list, env)
+                    if await new_client.initialize():
+                        self.clients[server_name] = new_client
+                        client = new_client
+                        logger.info(f"Successfully reconnected to MCP server {server_name}")
+                    else:
+                        return {"error": f"Failed to reconnect to MCP server {server_name}"}
+                except Exception as e:
+                    logger.error(f"Failed to reconnect to MCP server {server_name}: {e}")
+                    return {"error": f"MCP server connection lost and reconnection failed"}
             
             # Execute with timeout
             try:

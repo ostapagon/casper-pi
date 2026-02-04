@@ -1,59 +1,31 @@
 #!/bin/bash
-# Restart Anki application
+# Restart Anki - works with or without physical display
 
 echo "🔄 Restarting Anki..."
 
-# Step 1: Stop Anki
+# Stop Anki and Xvfb (but not this script)
 echo "🛑 Stopping Anki..."
-pkill -9 -f "^anki" 2>/dev/null || true
 pkill -9 -f "python.*anki" 2>/dev/null || true
-pkill -9 -f "QtWebEngineProcess.*Anki" 2>/dev/null || true
-
+pkill -9 -f "aqt" 2>/dev/null || true
+pkill -9 Xvfb 2>/dev/null || true
 sleep 2
 
-# Verify all processes are stopped
-if pgrep -f "^anki" > /dev/null || pgrep -f "python.*anki" > /dev/null || pgrep -f "QtWebEngineProcess.*Anki" > /dev/null; then
-    echo "⚠️ Some processes still running, force killing..."
-    pkill -9 -f "^anki" 2>/dev/null || true
-    pkill -9 -f "python.*anki" 2>/dev/null || true
-    pkill -9 -f "QtWebEngineProcess.*Anki" 2>/dev/null || true
-    sleep 1
-fi
-
-# Step 2: Start Anki (AnkiConnect will start automatically when Anki loads)
+# Check if display is available
 echo "🚀 Starting Anki..."
-
-# Check if we have a real display (X11 or Wayland with XWayland)
-XAUTH_FILE=$(find /home/rasberry_pi/.Xauthority /run/user/*/gdm/Xauthority /var/run/lightdm/*/Xauthority 2>/dev/null | head -1)
-
-# Check if Wayland is running (desktop is active)
-if [ -n "$WAYLAND_DISPLAY" ] || [ -f "/run/user/$(id -u)/wayland-0" ] || pgrep -x labwc > /dev/null; then
-    # Wayland desktop is running, use :0 (XWayland will handle it)
-    echo "   Desktop detected (Wayland), using display :0"
-    DISPLAY_NUM=:0
-    if [ -n "$XAUTH_FILE" ]; then
-        export XAUTHORITY="$XAUTH_FILE"
-    fi
-elif DISPLAY=:0 xdpyinfo > /dev/null 2>&1; then
-    # Real X11 display available
-    echo "   Using real X11 display :0"
-    DISPLAY_NUM=:0
-    if [ -n "$XAUTH_FILE" ]; then
-        export XAUTHORITY="$XAUTH_FILE"
-    fi
+if [ -n "$DISPLAY" ] && xdpyinfo > /dev/null 2>&1; then
+    echo "   Using connected display: $DISPLAY"
+    anki > /tmp/anki_restart.log 2>&1 &
 else
-    # No real display, use virtual framebuffer (Xvfb)
-    echo "   No display available, using virtual framebuffer (Xvfb)"
+    echo "   No display connected, starting virtual display (Xvfb)"
     
-    # Check if Xvfb is installed
+    # Install Xvfb if not present
     if ! command -v Xvfb > /dev/null 2>&1; then
         echo "   Installing Xvfb..."
-        sudo apt-get install -y xvfb > /dev/null 2>&1
+        sudo apt-get update -qq && sudo apt-get install -y xvfb
     fi
     
-    # Start Xvfb on display :99
-    DISPLAY_NUM=:99
-    Xvfb $DISPLAY_NUM -screen 0 1024x768x24 > /tmp/xvfb.log 2>&1 &
+    # Start Xvfb with additional extensions for Qt
+    Xvfb :99 -screen 0 1024x768x24 +extension GLX +render -noreset > /tmp/xvfb.log 2>&1 &
     XVFB_PID=$!
     sleep 2
     
@@ -62,41 +34,44 @@ else
         echo "❌ Failed to start Xvfb"
         exit 1
     fi
+    
+    # Start Anki with virtual display and Qt workarounds
+    # Use newer flags to prevent WebEngine crashes
+    export DISPLAY=:99
+    export QT_QPA_PLATFORM=offscreen
+    export QTWEBENGINE_DISABLE_SANDBOX=1
+    export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu --no-sandbox --disable-dev-shm-usage --disable-software-rasterizer"
+    export QT_LOGGING_RULES="*.debug=false;qt.qpa.*=false"
+    export LIBGL_ALWAYS_SOFTWARE=1
+    
+    # Start with default profile (has AnkiConnect addon)
+    anki > /tmp/anki_restart.log 2>&1 &
 fi
 
-# Start Anki in background - it will automatically load AnkiConnect addon
-# Use nohup to ensure it keeps running even if terminal closes
-nohup env DISPLAY=$DISPLAY_NUM XAUTHORITY="$XAUTH_FILE" anki > /tmp/anki_restart.log 2>&1 &
 ANKI_PID=$!
 
-# Wait for Anki to start and AnkiConnect to initialize
-echo "   Waiting for Anki to start (this may take a few seconds)..."
-sleep 5
+# Wait for Anki to initialize
+echo "   Waiting for Anki to start..."
+sleep 8
 
-# Check if Anki process is still running (not crashed)
-if kill -0 $ANKI_PID 2>/dev/null 2>/dev/null; then
-    # Anki is running, wait a bit more for AnkiConnect to start
-    sleep 3
+# Check if running
+if pgrep -f "python.*anki" > /dev/null; then
+    echo "✓ Anki is running"
     
-    # Check if AnkiConnect is responding
+    # Check AnkiConnect
+    sleep 2
     if curl -s http://127.0.0.1:8765 > /dev/null 2>&1; then
-        echo "✓ Anki restarted successfully (AnkiConnect is running)"
+        echo "✓ AnkiConnect is responding"
         exit 0
     else
-        echo "⚠️ Anki started but AnkiConnect may not be ready yet"
-        echo "   AnkiConnect usually takes 5-10 seconds to start"
-        echo "   Check if AnkiConnect addon is installed and enabled"
-        exit 0  # Still consider it success since Anki is running
+        echo "⚠️ Anki is running but AnkiConnect may not be ready yet"
+        echo "   Wait a few more seconds and try again"
+        exit 0
     fi
-elif pgrep -f "^anki" > /dev/null; then
-    # Anki process exists but PID changed (might have forked)
-    echo "✓ Anki restarted successfully"
-    exit 0
 else
-    echo "❌ Failed to start Anki"
-    echo "   Check /tmp/anki_restart.log for details"
-    echo "   Last 15 lines of log:"
-    tail -15 /tmp/anki_restart.log 2>/dev/null || echo "   (log file not found)"
+    echo "❌ Anki failed to start"
+    echo "   Last lines of log:"
+    tail -10 /tmp/anki_restart.log 2>/dev/null || echo "   (no log)"
     exit 1
 fi
 

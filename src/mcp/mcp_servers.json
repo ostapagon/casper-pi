@@ -15,6 +15,14 @@
       "command": ".venv/bin/python3",
       "args": ["src/mcp/servers/google_calendar/server.py"],
       "comment": "Google Calendar MCP server using service account authentication. Requires calendar_key.json in project root."
+    },
+    {
+      "name": "perplexity",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@perplexity-ai/mcp-server"],
+      "comment": "Perplexity AI search with research and reasoning capabilities. Provides 4 tools: perplexity_search, perplexity_ask, perplexity_research, perplexity_reason. Requires PERPLEXITY_API_KEY in .env"
     }
   ]
 }
