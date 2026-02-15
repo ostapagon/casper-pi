@@ -2,14 +2,24 @@
 """State manager for voice assistant"""
 
 import asyncio
+import os
+import logging
 import pyaudio
+import time
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum, auto
+from typing import Optional
 
 from .wake_word import WakeWordDetector
 from .voice_clients.gemini_live import GeminiLiveClient
 from .mcp import MCPRegistry
 from .display import DisplayManager, DisplayState
+
+# Import services
+from .services.task_executor import TaskExecutor
+from .services.agent import Agent
+from .services.webhook_server import WebhookServer
+from .services.telegram_bot import TelegramBot
 
 
 class State(Enum):
@@ -20,7 +30,13 @@ class State(Enum):
 class StateManager:
     """Manages state transitions between IDLE (wake word) and ACTIVE (conversation)"""
     
-    def __init__(self):
+    def __init__(self, enable_webhook: bool = None, enable_telegram: bool = None):
+        """Initialize StateManager
+        
+        Args:
+            enable_webhook: Enable webhook server (defaults to ENABLE_WEBHOOK env var)
+            enable_telegram: Enable Telegram bot (defaults to ENABLE_TELEGRAM env var)
+        """
         self.state = State.IDLE
         self.running = True
         
@@ -36,6 +52,19 @@ class StateManager:
         self.wake_detector = None
         self.gemini_client = None
         self.display_manager = DisplayManager()
+        
+        # Services (optional)
+        self.task_executor = None
+        self.agent = None
+        self.webhook_server = None
+        self.telegram_bot = None
+        
+        # Service configuration
+        self.enable_webhook = enable_webhook if enable_webhook is not None else os.getenv("ENABLE_WEBHOOK", "false").lower() in ("true", "1", "yes")
+        self.enable_telegram = enable_telegram if enable_telegram is not None else os.getenv("ENABLE_TELEGRAM", "false").lower() in ("true", "1", "yes")
+        
+        # Background tasks
+        self._background_tasks = []
     
     def _setup_audio(self):
         """Setup microphone stream"""
@@ -126,10 +155,28 @@ class StateManager:
                 print(f"⚠️ MCP initialization warning: {e}")
                 mcp_registry = None
             
-            # Initialize components - use stored sample rate
+            # Initialize shared memory manager (load embedding model once)
+            shared_memory = None
+            if os.getenv("ENABLE_AGENT_MEMORY", "true").lower() == "true":
+                from .services.memory import MemoryManager
+                try:
+                    shared_memory = MemoryManager(api_key=os.getenv("GEMINI_API_KEY"))
+                    print("✓ Shared memory initialized")
+                except Exception as e:
+                    print(f"⚠️ Memory initialization warning: {e}")
+            
+            # Initialize components - use stored sample rate and shared memory
             self.wake_detector = WakeWordDetector(wake_word="casper", sample_rate=self.sample_rate, thread_pool=self.thread_pool)
-            self.gemini_client = GeminiLiveClient(mcp_registry=mcp_registry, display_manager=self.display_manager, thread_pool=self.thread_pool)
+            self.gemini_client = GeminiLiveClient(
+                mcp_registry=mcp_registry,
+                display_manager=self.display_manager,
+                thread_pool=self.thread_pool,
+                shared_memory=shared_memory
+            )
             self.gemini_client.input_stream = self.input_stream
+            
+            # Initialize services if enabled
+            await self._initialize_services(mcp_registry, shared_memory)
             
             # Set display to sleep initially (IDLE state)
             try:
@@ -211,12 +258,6 @@ class StateManager:
                         print(f"⚠️ Display state warning: {e}")
                     
                     print("💤 Back to idle\n")
-                    
-                    # Clean up wake detector state
-                    try:
-                        self.wake_detector.reset()
-                    except Exception as e:
-                        print(f"⚠️ Wake detector reset warning: {e}")
         
         except KeyboardInterrupt:
             print("\n👋 Bye!")
@@ -231,6 +272,10 @@ class StateManager:
                     await mcp_registry.cleanup()
                 except Exception as e:
                     print(f"⚠️ MCP cleanup warning: {e}")
+            
+            # Cleanup services
+            await self._cleanup_services()
+            
             self.cleanup()
     
     def _close_audio_stream(self):
@@ -244,6 +289,96 @@ class StateManager:
                 print(f"⚠️ Error closing audio stream: {e}")
             self.input_stream = None
     
+    async def _initialize_services(self, mcp_registry: Optional[MCPRegistry], shared_memory=None):
+        """Initialize webhook and telegram services"""
+        try:
+            # Create task executor
+            self.task_executor = TaskExecutor(
+                mcp_registry=mcp_registry,
+                display_manager=self.display_manager
+            )
+            
+            # Create agent (for natural language processing) with shared memory
+            try:
+                self.agent = Agent(
+                    task_executor=self.task_executor,
+                    shared_memory=shared_memory
+                )
+                print("✓ Agent initialized (natural language support enabled)")
+            except Exception as e:
+                print(f"⚠️ Failed to initialize agent: {e}")
+                print("   Services will work without natural language processing")
+                self.agent = None
+            
+            # Start webhook server
+            if self.enable_webhook:
+                try:
+                    webhook_host = os.getenv("WEBHOOK_HOST", "0.0.0.0")
+                    webhook_port = int(os.getenv("WEBHOOK_PORT", "8080"))
+                    
+                    self.webhook_server = WebhookServer(
+                        task_executor=self.task_executor,
+                        agent=self.agent,
+                        host=webhook_host,
+                        port=webhook_port
+                    )
+                    
+                    # Start in background
+                    webhook_task = asyncio.create_task(self.webhook_server.start())
+                    self._background_tasks.append(webhook_task)
+                    
+                    print(f"✓ Webhook server starting on {webhook_host}:{webhook_port}")
+                except Exception as e:
+                    print(f"⚠️ Failed to start webhook server: {e}")
+            
+            # Start Telegram bot
+            if self.enable_telegram:
+                try:
+                    self.telegram_bot = TelegramBot(
+                        task_executor=self.task_executor,
+                        agent=self.agent
+                    )
+                    
+                    # Start in background
+                    telegram_task = asyncio.create_task(self.telegram_bot.start())
+                    self._background_tasks.append(telegram_task)
+                    
+                    print("✓ Telegram bot starting")
+                except Exception as e:
+                    print(f"⚠️ Failed to start Telegram bot: {e}")
+        
+        except Exception as e:
+            print(f"⚠️ Failed to initialize services: {e}")
+    
+    async def _cleanup_services(self):
+        """Cleanup webhook and telegram services"""
+        # Stop webhook server
+        if self.webhook_server:
+            try:
+                await self.webhook_server.stop()
+                print("  ✓ Webhook server stopped")
+            except Exception as e:
+                print(f"⚠️ Error stopping webhook: {e}")
+        
+        # Stop Telegram bot
+        if self.telegram_bot:
+            try:
+                await self.telegram_bot.stop()
+                print("  ✓ Telegram bot stopped")
+            except Exception as e:
+                print(f"⚠️ Error stopping Telegram bot: {e}")
+        
+        # Cancel background tasks
+        for task in self._background_tasks:
+            if not task.done():
+                task.cancel()
+        
+        # Wait for tasks to complete
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+        
+        self._background_tasks.clear()
+    
     def cleanup(self):
         """Cleanup resources - fast and safe"""
         print("🧹 Cleaning up resources...")
@@ -251,14 +386,9 @@ class StateManager:
         # Signal all operations to stop
         if self.gemini_client:
             self.gemini_client.active = False
-        
-        # Close output stream (resilient)
-        if self.gemini_client and self.gemini_client.output_stream:
+            # Use safe close method (prevents double-free)
             try:
-                if self.gemini_client.output_stream.is_active():
-                    self.gemini_client.output_stream.stop_stream()
-                self.gemini_client.output_stream.close()
-                self.gemini_client.output_stream = None
+                self.gemini_client._close_output_stream()
                 print("  ✓ Output stream closed")
             except Exception:
                 pass  # Silent fail

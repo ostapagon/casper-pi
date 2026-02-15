@@ -2,6 +2,7 @@
 
 from typing import Dict, Any, Callable, List, Optional
 import inspect
+import re
 from .manager import DisplayManager
 from .states import DisplayState
 
@@ -94,6 +95,22 @@ class DisplayToolRegistry:
         except Exception as e:
             return {"error": str(e)}
     
+    # Helper methods
+    
+    def _strip_html(self, text: str) -> str:
+        """Strip HTML tags from text"""
+        if not text:
+            return text
+        # Remove HTML tags
+        clean = re.sub(r'<[^>]+>', '', text)
+        # Decode common HTML entities
+        clean = clean.replace('&nbsp;', ' ')
+        clean = clean.replace('&amp;', '&')
+        clean = clean.replace('&lt;', '<')
+        clean = clean.replace('&gt;', '>')
+        clean = clean.replace('&quot;', '"')
+        return clean.strip()
+    
     # Tool implementations
     
     def _show_text(self, text: str) -> str:
@@ -133,12 +150,18 @@ class DisplayToolRegistry:
         try:
             if not self.display_manager.is_initialized:
                 self.display_manager.initialize()
-            if show_back and back:
-                text = f"{front}\n---\n{back}"
+            
+            # Strip HTML from front and back
+            clean_front = self._strip_html(front)
+            clean_back = self._strip_html(back) if back else None
+            
+            if show_back and clean_back:
+                text = f"{clean_front}\n---\n{clean_back}"
             else:
-                text = front
+                text = clean_front
+            
             self.display_manager.show_text(text, size=18)
-            return f"Displayed card: {front[:30]}..." if len(front) > 30 else f"Displayed card: {front}"
+            return f"Displayed card: {clean_front[:30]}..." if len(clean_front) > 30 else f"Displayed card: {clean_front}"
         except Exception as e:
             error_msg = f"Error displaying card: {str(e)}"
             print(f"⚠️ {error_msg}")

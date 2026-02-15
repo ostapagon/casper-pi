@@ -86,8 +86,27 @@ async def list_events(calendar_id='primary', max_results=10, time_min=None, time
     """
     service = get_calendar_service()
     
+    def _normalize_rfc3339(value: str, is_end: bool = False) -> str:
+        """Normalize date/time to RFC3339 with timezone."""
+        if not value:
+            return value
+        value = value.strip()
+        # Date-only
+        if len(value) == 10 and value.count("-") == 2:
+            return f"{value}T23:59:59Z" if is_end else f"{value}T00:00:00Z"
+        # If already has timezone info, keep
+        if value.endswith("Z") or "+" in value[10:] or "-" in value[10:]:
+            return value
+        # Time provided but no timezone
+        return f"{value}Z"
+    
     if time_min is None:
         time_min = datetime.utcnow().isoformat() + 'Z'
+    else:
+        time_min = _normalize_rfc3339(time_min, is_end=False)
+    
+    if time_max:
+        time_max = _normalize_rfc3339(time_max, is_end=True)
     
     # If calendar_id is 'primary', try user's calendar first, then fall back to service account's primary
     actual_calendar_id = calendar_id
@@ -141,6 +160,12 @@ async def create_event(calendar_id='primary', summary=None, start_time=None, end
     """Create a new calendar event"""
     service = get_calendar_service()
     
+    # Resolve 'primary' to user's calendar email if set (same logic as list_events)
+    actual_calendar_id = calendar_id
+    user_email = get_user_calendar_email()
+    if calendar_id == 'primary' and user_email:
+        actual_calendar_id = user_email
+    
     if start_time is None:
         start_time = datetime.utcnow()
     if end_time is None:
@@ -163,7 +188,7 @@ async def create_event(calendar_id='primary', summary=None, start_time=None, end
     if location:
         event['location'] = location
     
-    created_event = service.events().insert(calendarId=calendar_id, body=event).execute()
+    created_event = service.events().insert(calendarId=actual_calendar_id, body=event).execute()
     return {
         'id': created_event['id'],
         'summary': created_event.get('summary', ''),

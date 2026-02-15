@@ -2,9 +2,14 @@
 
 import asyncio
 import json
+import os
 import pyaudio
 from typing import Callable, Optional
 from concurrent.futures import ThreadPoolExecutor
+
+# Suppress Vosk logging
+os.environ['VOSK_LOG_LEVEL'] = '-1'
+
 from vosk import Model, KaldiRecognizer
 
 
@@ -45,6 +50,10 @@ class WakeWordDetector:
     ) -> None:
         # Load model if not already loaded
         self._load_model()
+        
+        # Reset recognizer state before starting (clears previous audio)
+        if self.recognizer:
+            self.recognizer.Reset()
         
         self.running = True
         print(f"🎤 Listening for '{self.wake_word}'...")

@@ -17,6 +17,11 @@ dependencies = [
     "adafruit-circuitpython-ssd1351",
     "mcp>=0.1.0",
     "httpx>=0.24.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "python-telegram-bot>=20.0",
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.0.0",
 ]
 
 [build-system]

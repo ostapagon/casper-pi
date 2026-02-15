@@ -126,23 +126,35 @@ async def get_due_cards(deck_name=None, limit=None):
     due0_raw_count = len(card_ids_due0)  # All cards with due=0
     due0_count = len(card_ids_due0_filtered)  # Filtered count (after excluding done cards, including again)
     
-    # Calculate how many cards we can get from due=1 (tomorrow)
-    # Formula: cards_due_left - due0_raw + again = next_due_left
-    # Use raw due0 count (all cards with due=0), not filtered count
-    next_due_left = cards_due_left - due0_raw_count + again_count
+    # Fill remaining slots with upcoming due cards (prop:due=1..N)
+    remaining_slots = max(cards_due_left - len(card_ids_due0_filtered), 0)
+    card_ids_future = []
+    if remaining_slots > 0:
+        # Pull future cards day by day until we fill the limit
+        for day_offset in range(1, 31):
+            query_due_future = f"prop:due={day_offset}"
+            if deck_name:
+                query_due_future = f'deck:"{deck_name}" {query_due_future}'
+            card_ids_day = await anki_request("findCards", query=query_due_future)
+            if not card_ids_day:
+                continue
+            for cid in card_ids_day:
+                if cid in reviewed_set:
+                    continue
+                if cid in card_ids_due0_filtered:
+                    continue
+                if cid in card_ids_future:
+                    continue
+                card_ids_future.append(cid)
+                if len(card_ids_future) >= remaining_slots:
+                    break
+            if len(card_ids_future) >= remaining_slots:
+                break
     
-    # Get cards from due=1 (tomorrow) if we have space
-    card_ids_due1 = []
-    if next_due_left > 0:
-        query_due1 = "prop:due=1"
-        if deck_name:
-            query_due1 = f'deck:"{deck_name}" {query_due1}'
-        card_ids_due1_all = await anki_request("findCards", query=query_due1)
-        # Limit to next_due_left
-        card_ids_due1 = card_ids_due1_all[:next_due_left] if card_ids_due1_all else []
-    
-    # Combine due0 and due1 cards
-    card_ids_review = card_ids_due0_filtered + card_ids_due1
+    # Combine due0 and upcoming cards
+    card_ids_review = card_ids_due0_filtered + card_ids_future
+    # Remaining slots after fill (for reporting)
+    next_due_left = max(cards_due_left - len(card_ids_review), 0)
     
     # Get NEW cards - use Anki's getDeckStats to respect internal limits
     # Anki tracks daily new card limits internally
@@ -484,6 +496,27 @@ def main():
                             raise ValueError("deck_name is required")
                         limit = args.get("limit")
                         result_data = asyncio.run(get_due_cards(deck_name=deck_name, limit=limit))
+                        try:
+                            breakdown = result_data.get("breakdown", {})
+                            review = breakdown.get("review", {})
+                            learning = breakdown.get("learning", {})
+                            new = breakdown.get("new", {})
+                            print(
+                                "ANKI get_due_cards:",
+                                f"deck={deck_name}",
+                                f"limit={limit}",
+                                f"total_returned={result_data.get('returned', 0)}",
+                                f"reviewed_today={result_data.get('reviewed_today', 0)}",
+                                f"again_today={result_data.get('again_today', 0)}",
+                                f"cards_due_left={result_data.get('cards_due_left', 0)}",
+                                f"next_due_left={result_data.get('next_due_left', 0)}",
+                                f"review={review.get('returned', 0)}/{review.get('found', 0)}",
+                                f"learning={learning.get('returned', 0)}/{learning.get('found', 0)}",
+                                f"new={new.get('returned', 0)}/{new.get('found', 0)}",
+                                file=sys.stderr
+                            )
+                        except Exception:
+                            pass
                         result = {
                         "jsonrpc": "2.0",
                         "id": request_id,
@@ -510,6 +543,26 @@ def main():
                             raise ValueError("deck_name is required")
                         # Get all cards to review (sorted by config) and pick the top one
                         result_data = asyncio.run(get_due_cards(deck_name=deck_name))
+                        try:
+                            breakdown = result_data.get("breakdown", {})
+                            review = breakdown.get("review", {})
+                            learning = breakdown.get("learning", {})
+                            new = breakdown.get("new", {})
+                            print(
+                                "ANKI get_next_card:",
+                                f"deck={deck_name}",
+                                f"total_returned={result_data.get('returned', 0)}",
+                                f"reviewed_today={result_data.get('reviewed_today', 0)}",
+                                f"again_today={result_data.get('again_today', 0)}",
+                                f"cards_due_left={result_data.get('cards_due_left', 0)}",
+                                f"next_due_left={result_data.get('next_due_left', 0)}",
+                                f"review={review.get('returned', 0)}/{review.get('found', 0)}",
+                                f"learning={learning.get('returned', 0)}/{learning.get('found', 0)}",
+                                f"new={new.get('returned', 0)}/{new.get('found', 0)}",
+                                file=sys.stderr
+                            )
+                        except Exception:
+                            pass
                         cards = result_data.get("cards", [])
                         if cards:
                             card = cards[0]  # Top card from sorted list
