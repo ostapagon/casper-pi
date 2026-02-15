@@ -124,6 +124,47 @@ Deck-specific settings are configured in `servers/anki/decks.json`:
 python3 cursor_tests/test_mcp_connection.py
 ```
 
+### Google Calendar MCP Server
+
+**This project uses a custom Google Calendar MCP server** for calendar integration.
+
+- **Location**: `src/mcp/servers/google_calendar/server.py`
+- **Transport**: stdio
+- **Authentication**: Service account (requires `calendar_key.json` in project root)
+- **Configuration**: Uses environment variable `GOOGLE_CALENDAR_USER_EMAIL` (optional)
+
+**Features:**
+- `list_calendars` - List all accessible Google Calendars
+- `list_calendar_events` - List events from a calendar (supports date filtering)
+- `create_event` - Create a new calendar event
+
+**Setup Instructions:**
+
+1. **Create a Google Cloud Project**:
+   - Visit [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing one
+   - Enable Google Calendar API
+
+2. **Create Service Account**:
+   - Go to "IAM & Admin" → "Service Accounts"
+   - Create a new service account
+   - Create and download JSON key file
+
+3. **Share Calendar with Service Account**:
+   - Open Google Calendar settings
+   - Find the service account email in the JSON key file
+   - Share your calendar with that email address
+   - Grant "Make changes to events" permission
+
+4. **Configure Project**:
+   - Save the JSON key file as `calendar_key.json` in project root
+   - Optionally set `GOOGLE_CALENDAR_USER_EMAIL` in `.env` for default calendar
+   - The server will automatically use this configuration
+
+**Environment Variables:**
+- `GOOGLE_CALENDAR_SERVICE_ACCOUNT_PATH` - Path to service account JSON (default: `calendar_key.json`)
+- `GOOGLE_CALENDAR_USER_EMAIL` - Default calendar email to use (optional)
+
 ### Perplexity MCP Server
 
 **This project uses the official Perplexity MCP server** for AI-powered web search, research, and reasoning capabilities.

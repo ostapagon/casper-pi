@@ -2,6 +2,8 @@
 
 A voice assistant for Raspberry Pi 5 with local wake word detection, cloud-based conversation, and parallel webhook/Telegram interfaces.
 
+> **📖 Blog Post**: Read about building Casper on [Ostapagon's Medium blog](https://medium.com/@ostapagon/raspberry-ai-agent-that-wont-ghost-you-for-200-0c25475c95dd) - "Raspberry AI: Agent That Won't Ghost You for $200"
+
 ## Architecture
 
 ```

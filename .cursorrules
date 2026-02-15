@@ -3,12 +3,23 @@
 ## Project Structure
 
 - `src/` - Main application source code
+  - `src/main.py` - Entry point
+  - `src/config.py` - Configuration management
+  - `src/state.py` - State manager
+  - `src/wake_word.py` - Wake word detector
+  - `src/voice_clients/` - Voice API clients
+  - `src/services/` - Service layer (agent, memory, task executor, telegram, webhook)
+  - `src/webhooks/` - Webhook handlers
+  - `src/integrations/` - External integrations
+  - `src/display/` - OLED display module
   - `src/mcp/` - MCP integration module
     - `src/mcp/registry.py` - Core MCP registry
-    - `src/mcp/servers/` - Custom MCP server implementations
+    - `src/mcp/servers/` - Custom MCP server implementations (anki, google_calendar)
+    - `src/mcp/mcp_servers.json` - MCP server configuration (single source of truth)
     - `src/mcp/README.md` - MCP documentation
 - `cursor_tests/` - Test scripts and utilities (gitignored)
-- `src/mcp/mcp_servers.json` - MCP server configuration (one place to register all servers)
+- `memories/` - Conversation history storage
+- `data/` - Runtime data
 
 ## Testing
 
