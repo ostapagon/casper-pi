@@ -2,7 +2,7 @@
 
 Voice assistant with wake word detection, Gemini Live API integration, and multiple service interfaces.
 
-> **📖 Blog Post**: Read about building Casper on [Ostapagon's Medium blog](https://medium.com/@ostapagon/raspberry-ai-agent-that-wont-ghost-you-for-200-0c25475c95dd)
+> **📖 Blog Post**: Read about building Casper on [ostapagon's blog](https://ostapagon.github.io/posts/2026-02-07-raspberry-ai/)
 
 ## Structure
 
